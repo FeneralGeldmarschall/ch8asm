@@ -1,0 +1,5 @@
+*.bin
+*.asm
+*.log
+*.x
+build/
