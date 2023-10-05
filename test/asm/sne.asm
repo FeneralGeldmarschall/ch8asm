@@ -1,0 +1,5 @@
+VAL = $02
+
+SNE V0, $01
+SNE V0, VAL
+SNE V0, V1

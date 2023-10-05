@@ -1,0 +1,8 @@
+VAL = $02
+ADDR = $234
+
+LD V0, $01
+LD V0, VAL
+LD V0, V1
+LD I, $123
+LD I, ADDR

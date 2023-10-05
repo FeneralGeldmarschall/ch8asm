@@ -1,0 +1,4 @@
+VAL = $2
+
+DRW V0, V1, $1
+DRW V0, V1, VAL

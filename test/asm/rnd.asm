@@ -1,0 +1,4 @@
+VAL = $02
+
+RND V0, $01
+RND V0, VAL
