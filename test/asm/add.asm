@@ -1,6 +1,6 @@
 VAL = $02
 
 ADD V0, $01
-ADD V0, $02
+ADD V0, VAL
 ADD V0, V1
 ADD I, V1
