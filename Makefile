@@ -13,10 +13,14 @@ HEADERS := $(wildcard $(SRC_DIR)/*.h)
 SOURCES := $(wildcard $(SRC_DIR)/*.cpp)
 OBJECTS := $(subst $(SRC_DIR),$(BUILD_DIR),$(subst .cpp,.o, $(SOURCES)))
 
-.PHONY: debug all
+.PHONY: debug all test
 debug: CFLAGS += $(DEBUGFLAGS)
 debug: EXEC=$(DEBUG)
 debug: all
+
+test: all
+test: 
+	./test/test.sh $(EXEC)
 
 # all: $(EXEC)
 all: $(SOURCES)
