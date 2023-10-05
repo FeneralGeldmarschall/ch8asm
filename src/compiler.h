@@ -7,33 +7,11 @@
 
 #include "token.h"
 
-// typedef enum {
-//     INST_CLS,
-//     INST_RET,
-//     INST_JP,
-//     INST_CALL,
-//     INST_SE,
-//     INST_SNE,
-//     INST_LD,
-//     INST_ADD,
-//     INST_OR,
-//     INST_XOR,
-//     INST_SUB,
-//     INST_SHR,
-//     INST_SUBN,
-//     INST_SHL,
-//     INST_RND,
-//     INST_DRW,
-//     INST_SKP,
-//     INST_SKNP,
-//     INST_UNKNOWN,
-// } InstructionType;
-
 class Compiler {
   public:
     Compiler(std::vector<Token> *tokens, const char *outfile, char *buffer,
              int bufferLength);
-    void compile();
+    int compile();
     bool hadError;
 
   private:
@@ -51,8 +29,7 @@ class Compiler {
     std::map<std::string, uint16_t> variableMap;
 
     bool panicMode;
-    void errorAtPrevious(const char *message);
-    void error(Token *token, const char *message);
+    void error(Token *token, const char *message, ...);
 
     void writeInstruction(uint16_t instruction);
 
@@ -60,18 +37,19 @@ class Compiler {
     Token *peek();
     Token *peekNext();
     bool consume(TokenType type, const char *message);
-    bool decodeLiteral(Token *literal, uint8_t binaryLength, uint8_t hexLength,
-                       const char *message);
+    uint16_t decodeLiteral(Token *literal, uint8_t binaryLength,
+                           uint8_t hexLength, const char *message);
 
     // Token *previous();
     bool isAtEnd();
+    bool check(TokenType type);
+    bool checkBetween(TokenType start, TokenType end);
     bool match(TokenType type);
     bool matchBetween(TokenType start, TokenType end);
 
     void statement();
     void instructionStmt();
-    void labelStmt();
-    void assignStmt();
+    void assignStmt(Token *identifier);
 
     void labelPass();
 

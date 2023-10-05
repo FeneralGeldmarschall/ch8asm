@@ -21,14 +21,13 @@ class Scanner {
     char previous();
     char advance();
     char peek();
+    char peekNext();
     bool isAtEnd();
     Token newToken(TokenType type);
     void skipWhitespace();
     void comment();
 
     Token literal();
-    Token hexLiteral();
-    Token binaryLiteral();
     Token identifier(char c);
 
     TokenType checkInstruction(int start, int length, const char *rest,

@@ -7,7 +7,7 @@
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fprintf(stderr, "Usage: chesm [path]\n");
+        fprintf(stderr, "Usage: ch8asm [path]\n");
         exit(64);
     }
 
@@ -39,23 +39,26 @@ int main(int argc, char *argv[]) {
     scanner.scan(&tokens);
 
     if (scanner.hadError) {
-        fprintf(stderr, "Scanning failed.");
+        fprintf(stderr, "Scanning failed.\n");
         exit(65);
     }
 
     char compileBuffer[4096 - 512 + 1];
     Compiler compiler(&tokens, "out.bin", compileBuffer, 4096 - 512 + 1);
-    compiler.compile();
+    int blen = compiler.compile();
 
     if (compiler.hadError) {
-        fprintf(stderr, "Compiling failed.");
+        fprintf(stderr, "Compiling failed.\n");
         exit(65);
     }
 
     FILE *outFile = fopen("out.ch8", "wb");
     int pos = 0;
-    while (buffer[pos] != '\0') {
-        fwrite(&buffer[pos], 1, 1, outFile);
+    blen++;
+    while (compileBuffer[pos] != EOF) {
+        // for (int pos = 0; pos < blen; pos++) {
+        fwrite(compileBuffer + pos, 1, 1, outFile);
+        // printf("%2X", compileBuffer[pos]);
         pos++;
     }
 

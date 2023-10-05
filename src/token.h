@@ -3,10 +3,10 @@
 #include <vector>
 
 typedef enum {
+    TOKEN_NEWLINE,
     TOKEN_COMMA,
     TOKEN_DOT,
     TOKEN_COLON,
-    TOKEN_NEWLINE,
     TOKEN_EQUAL,
 
     TOKEN_IDENTIFIER, // Variable, Label
@@ -17,12 +17,11 @@ typedef enum {
     // TOKEN_REGISTER,
     TOKEN_V_REGISTER,
     TOKEN_I_REGISTER,
-    TOKEN_REG_V,
-    TOKEN_REG_I,
 
     TOKEN_INST_CLS,
     TOKEN_INST_RET,
     TOKEN_INST_JP,
+    TOKEN_INST_JPO,
     TOKEN_INST_CALL,
     TOKEN_INST_SE,
     TOKEN_INST_SNE,

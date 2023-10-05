@@ -1,8 +1,12 @@
+#include <cctype>
+#include <cstdarg>
+#include <cstdint>
 #include <map>
 #include <stdint.h>
 #include <string>
 #include <vector>
 
+#include "common.h"
 #include "compiler.h"
 #include "token.h"
 
@@ -12,18 +16,20 @@ Compiler::Compiler(std::vector<Token> *tokens, const char *outfile,
     this->currentToken = 0;
     this->currentAddress = 512;
     this->previous = nullptr;
-    this->outfile = fopen(outfile, "wb");
-    if (this->outfile == NULL) {
-        fprintf(stderr, "Could not open file %s", outfile);
-        exit(74);
-    }
+    // this->outfile = fopen(outfile, "wb");
+    // if (this->outfile == NULL) {
+    //     fprintf(stderr, "Could not open file %s", outfile);
+    //     exit(74);
+    // }
+    this->outfile = NULL;
     this->buffer = buffer;
     this->bufferLength = bufferLength;
     this->currentBufferPos = 0;
 }
 
 Token *Compiler::advance() {
-    currentToken++;
+    if (!isAtEnd())
+        currentToken++;
     previous = &tokens->at(currentToken - 1);
     return previous;
 }
@@ -37,19 +43,27 @@ Token *Compiler::peekNext() { return &tokens->at(currentToken + 1); }
 
 bool Compiler::isAtEnd() { return currentToken >= (int)tokens->size(); }
 
-bool Compiler::match(TokenType type) {
+bool Compiler::check(TokenType type) {
     if (isAtEnd())
         return false;
-    if (peek()->type == type)
+    return peek()->type == type;
+}
+
+bool Compiler::match(TokenType type) {
+    if (check(type)) {
+        advance();
         return true;
+    }
     return false;
 }
 
 bool Compiler::matchBetween(TokenType start, TokenType end) {
     if (isAtEnd())
         return false;
-    if (start <= peek()->type && peek()->type <= end)
+    if (start <= peek()->type && peek()->type <= end) {
+        advance();
         return true;
+    }
     return false;
 }
 
@@ -63,59 +77,43 @@ void Compiler::writeInstruction(uint16_t instruction) {
         fprintf(stderr, "Assembly file is too large.\n");
         exit(65);
     }
-    buffer[currentBufferPos] = (char)(instruction >> 8);
+    buffer[currentBufferPos] = (uint8_t)(instruction >> 8);
     currentBufferPos++;
-    buffer[currentBufferPos] = (char)(instruction & 0xFF);
+    buffer[currentBufferPos] = (uint8_t)(instruction);
     currentBufferPos++;
 }
 
 bool Compiler::consume(TokenType type, const char *message) {
     if (advance()->type != type) {
-        errorAtPrevious(message);
+        error(previous, message);
         return false;
     }
     return true;
 }
 
-void Compiler::errorAtPrevious(const char *message) {
-    error(previous, message);
-}
-
-void Compiler::error(Token *token, const char *message) {
+void Compiler::error(Token *token, const char *message, ...) {
     if (!panicMode) {
         panicMode = true;
-        fprintf(stderr, "[line %d] %s\n", token->line, message);
+        fprintf(stderr, "[line %d] ", token->line);
+        va_list args;
+        va_start(args, message);
+        vfprintf(stderr, message, args);
+        va_end(args);
+        fprintf(stderr, "\n");
     }
     hadError = true;
 }
 
-// static TokenType checkKeyword(int start, int length, const char *rest,
-//                               TokenType type) {
-//     if (scanner.current - scanner.start == start + length &&
-//         memcmp(scanner.start + start, rest, length) == 0) {
-//         return type;
-//     }
-
-//     return TOKEN_IDENTIFIER;
-// }
-
-// InstructionType checkInstruction(Token *token) {
-//     char c = *token->start;
-//     switch (c) {
-//         case 'A': {
-//         } break;
-//         case 'C': {
-//         } break;
-//         case 'D': {
-//         } break;
-//         case 'J': {
-//         } break;
-//         case 'L': {} break;
-//         case 'O': {} break;
-//         case 'R': {} break;
-//         case ''
-//     }
-// }
+uint8_t charToHex(char c) {
+    if (isDigit(c)) {
+        return c - '0';
+    } else if (isUpper(c)) {
+        return c - 'A' + 10;
+    } else if (isLower(c)) {
+        return c - 'a' + 10;
+    }
+    return 199; // something went wrong
+}
 
 uint16_t decodeBinaryLiteral(Token *literal) {
     uint16_t num = 0;
@@ -129,43 +127,36 @@ uint16_t decodeBinaryLiteral(Token *literal) {
 uint16_t decodeHexLiteral(Token *literal) {
     uint16_t num = 0;
     for (int i = 1; i < literal->length; i++) {
-        char c = *(literal->start + i);
-        num |= (c << ((i - 1) * 4));
+        uint8_t c = charToHex(*(literal->start + i));
+        num |= (c << ((literal->length - (i + 1)) * 4));
     }
     return num;
 }
 
-bool Compiler::decodeLiteral(Token *literal, uint8_t binaryLength,
-                             uint8_t hexLength, const char *message) {
+uint16_t Compiler::decodeLiteral(Token *literal, uint8_t binaryLength,
+                                 uint8_t hexLength, const char *message) {
     uint16_t num = 0;
     if (*literal->start == '%' && (literal->length - 1) == binaryLength) {
         num = decodeBinaryLiteral(literal);
     } else if (*literal->start == '$' && (literal->length - 1) == hexLength) {
         num = decodeHexLiteral(literal);
     } else {
-        errorAtPrevious(message);
+        error(previous, message);
     }
     return num;
 }
 
 inline uint16_t extractXReg(Token *token) {
-    return (uint16_t)((*token->start + 1) << 8);
+    return (uint16_t)(charToHex(*(token->start + 1)) << 8);
 }
 
 inline uint16_t extractYReg(Token *token) {
-    return (uint16_t)((*token->start + 1) << 4);
+    return (uint16_t)(charToHex(*(token->start + 1)) << 4);
 }
 void Compiler::instructionStmt() {
-#define EXTRACT_X_REG(token) (uint16_t)(*(token->start + 1) << 8)
-#define EXTRACT_Y_REG(token) (uint16_t)(*(token->start + 1) << 4)
 #define CONSUME(tType, message)                                                \
-    if (peek()->type != tType) {                                               \
-        panicMode = true;                                                      \
-        fprintf(stderr, "%s", message);                                        \
-        advance();                                                             \
-        goto error;                                                            \
-    } else {                                                                   \
-        advance();                                                             \
+    if (!consume(tType, message)) {                                            \
+        break;                                                                 \
     }
 #define DOUBLE_REG_INST(inst, opcode)                                          \
     CONSUME(TOKEN_V_REGISTER, "inst expects V register as first argument.");   \
@@ -173,141 +164,238 @@ void Compiler::instructionStmt() {
     CONSUME(TOKEN_COMMA, "Exptected ',' between arguments.");                  \
     CONSUME(TOKEN_V_REGISTER, "inst expects V register as second argument.");  \
     uint16_t y = extractYReg(previous);                                        \
-    writeInstruction(opcode + x + y);
+    writeInstruction(opcode + x + y);                                          \
+    return;
 
 #define SINGLE_REG_INST(inst, opcode)                                          \
     CONSUME(TOKEN_V_REGISTER, "inst expects V register as argument.");         \
     uint16_t x = extractXReg(previous);                                        \
-    writeInstruction(opcode + x);
+    writeInstruction(opcode + x);                                              \
+    return;
 
-#define CHECK_ERROR                                                            \
-    if (!status)                                                               \
-        return;
-    // if status wasnt set to false we return from the function and continue
-    // to the error handling code
-
-    Token *token = advance();
-    // bool status = true;
+    Token *token = previous;
     switch (token->type) {
         case TOKEN_INST_CLS: {
-            consume(TOKEN_NEWLINE, "Instruction 'CLSS' has no arguments.");
+            if (matchBetween(TOKEN_COMMA, TOKEN_INST_LDV)) {
+                error(previous, "Instruction 'CLS' has no arguments.");
+            }
             writeInstruction(0x00E0);
+            return;
         } break;
         case TOKEN_INST_RET: {
-            CONSUME(TOKEN_NEWLINE, "Instruction 'RET' has no arguments.");
+            if (matchBetween(TOKEN_COMMA, TOKEN_INST_LDV)) {
+                error(previous, "Instruction 'RET' has no arguments.");
+            }
             writeInstruction(0x00EE);
+            return;
         } break;
         case TOKEN_INST_JP: {
-            Token *next = advance();
             uint16_t val = 0;
             if (match(TOKEN_IDENTIFIER)) {
-                std::string label(next->start, next->length);
+                std::string label(previous->start, previous->length);
                 if (labelMap.find(label) != labelMap.end()) {
-                    labelMap.at(label);
-                    writeInstruction(0x1000 + val);
+                    val = labelMap.at(label);
                 } else {
-                    error(next, "Label does not exist.");
+                    error(previous, "Label '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
                 }
-
             } else if (match(TOKEN_LITERAL)) {
-                val = decodeLiteral(next, 12, 3,
-                                    "JMP instruction expects 12 bit address.");
-                writeInstruction(0x1000 + val);
+                val = decodeLiteral(previous, 12, 3,
+                                    "JP instruction expects 12 bit literal.");
+            } else {
+                error(advance(), "'JP' expects either label, literal or V "
+                                 "register as first argument.");
+                break;
             }
+            writeInstruction(0x1000 + val);
+        } break;
+        case TOKEN_INST_JPO: {
+            uint16_t val = 0;
+            if (match(TOKEN_IDENTIFIER)) {
+                std::string label(previous->start, previous->length);
+                if (labelMap.find(label) != labelMap.end()) {
+                    val = labelMap.at(label);
+                } else {
+                    error(previous, "Label '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
+                }
+            } else if (match(TOKEN_LITERAL)) {
+                val =
+                    decodeLiteral(previous, 12, 3,
+                                  "'JPO' instruction expects 12 bit literal.");
+            } else {
+                error(advance(), "'JPO' expects either label, literal or V "
+                                 "register as first argument.");
+                break;
+            }
+            writeInstruction(0xB000 + val);
         } break;
         case TOKEN_INST_CALL: {
-            Token *next = advance();
             uint16_t val = 0;
             if (match(TOKEN_IDENTIFIER)) {
-                std::string label(next->start, next->length);
+                std::string label(previous->start, previous->length);
                 if (labelMap.find(label) != labelMap.end()) {
-                    labelMap.at(label);
-                    writeInstruction(0x1000 + val);
+                    val = labelMap.at(label);
                 } else {
-                    error(next, "Label does not exist.");
+                    error(previous, "Label '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
                 }
-            } else if (next->type == TOKEN_LITERAL) {
-                val = decodeLiteral(next, 12, 3,
+            } else if (match(TOKEN_LITERAL)) {
+                val = decodeLiteral(previous, 12, 3,
                                     "JMP instruction expects 12 bit address.");
-                writeInstruction(0x1000 + val);
             }
+            writeInstruction(0x2000 + val);
+            return;
         } break;
         case TOKEN_INST_SE: {
-            // consume(TOKEN_V_REGISTER,
-            // "SE instruction expects V register as first argument.");
             CONSUME(TOKEN_V_REGISTER,
                     "SE instruction expects V register as first argument.");
-            Token *vx = previous;
-            uint16_t x = EXTRACT_X_REG(vx);
-            // consume(TOKEN_COMMA, "Expected ',' between instruction
-            // arguments.");
+            uint16_t x = extractXReg(previous);
             CONSUME(TOKEN_COMMA, "Expected ',' between instruction arguments.");
             if (match(TOKEN_V_REGISTER)) {
-                Token *vy = advance();
-                uint16_t y = extractXReg(vy);
+                uint16_t y = extractYReg(previous);
                 writeInstruction(0x5000 + x + y);
+                return;
             } else if (match(TOKEN_LITERAL)) {
-                uint16_t val = decodeLiteral(advance(), 8, 2, "Expected byte.");
+                uint16_t val = decodeLiteral(previous, 8, 2, "Expected byte.");
+                writeInstruction(0x3000 + x + val);
+                return;
+            } else if (match(TOKEN_IDENTIFIER)) {
+                uint16_t val = 0;
+                std::string str(previous->start, previous->length);
+                if ((variableMap.find(str) == variableMap.end())) {
+                    error(previous, "Variable '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
+                } else if (variableMap.at(str) > 255) {
+                    error(previous,
+                          "Value %d in variable '%.*s' is too large "
+                          "(expected byte).",
+                          variableMap.at(str), previous->length,
+                          previous->start);
+                    break;
+                }
+                val = variableMap.at(str);
                 writeInstruction(0x3000 + x + val);
             } else {
-                error(peek(), "Instruction SE expects either V register or "
-                              "literal as second argument.");
-                advance();
-                goto error;
+                error(advance(), "Instruction SE expects either V register or "
+                                 "literal as second argument.");
+                break;
             }
         } break;
         case TOKEN_INST_SNE: {
             CONSUME(TOKEN_V_REGISTER,
-                    "SNE instruction expects V register as first argument.");
-            CONSUME(TOKEN_COMMA, "Expect ',' between arguments.");
-            uint16_t x = EXTRACT_X_REG(previous);
-            CONSUME(TOKEN_LITERAL,
-                    "SNE instruction expects byte as second argument.");
-            uint16_t byte =
-                decodeLiteral(previous, 8, 2, "SNE epects byte literal.");
-            writeInstruction(0x4000 + x + byte);
+                    "'SNE' instruction expects V register as first argument.");
+            uint16_t x = extractXReg(previous);
+            CONSUME(TOKEN_COMMA, "Expected ',' between instruction arguments.");
+            if (match(TOKEN_V_REGISTER)) {
+                uint16_t y = extractYReg(previous);
+                writeInstruction(0x9000 + x + y);
+                return;
+            } else if (match(TOKEN_LITERAL)) {
+                uint16_t val = decodeLiteral(previous, 8, 2, "Expected byte.");
+                writeInstruction(0x4000 + x + val);
+                return;
+            } else if (match(TOKEN_IDENTIFIER)) {
+                uint16_t val = 0;
+                std::string str(previous->start, previous->length);
+                if ((variableMap.find(str) == variableMap.end())) {
+                    error(previous, "Variable '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
+                } else if (variableMap.at(str) > 255) {
+                    error(previous,
+                          "Value %d in variable '%.*s' is too large "
+                          "(expected byte).",
+                          variableMap.at(str), previous->length,
+                          previous->start);
+                    break;
+                }
+                val = variableMap.at(str);
+                writeInstruction(0x4000 + x + val);
+            } else {
+                error(advance(), "Instruction SNE expects either V register or "
+                                 "literal as second argument.");
+                break;
+            }
         } break;
         case TOKEN_INST_LD: {
             if (match(TOKEN_V_REGISTER)) {
-                uint16_t x = extractXReg(advance());
+                uint16_t x = extractXReg(previous);
                 CONSUME(TOKEN_COMMA, "Expected ',' between arguments.");
-                if (match(TOKEN_V_REGISTER)) {
-                    uint16_t y = extractYReg(advance());
-                    writeInstruction(0x6000 + x + y);
-                } else if (match(TOKEN_LITERAL)) {
-                    uint16_t byte = decodeLiteral(advance(), 8, 2,
-                                                  "Expected byte literal.");
-                    writeInstruction(0x8000 + x + byte);
+                if (match(TOKEN_LITERAL)) {
+                    uint16_t byte =
+                        decodeLiteral(previous, 8, 2, "Expected byte literal.");
+                    writeInstruction(0x6000 + x + byte);
+                    return;
+                } else if (match(TOKEN_IDENTIFIER)) {
+                    std::string str(previous->start, previous->length);
+                    if ((variableMap.find(str) == variableMap.end()) ||
+                        variableMap.at(str) > 255) {
+                        error(previous, "Value in variable is too large for LD "
+                                        "(expected byte).");
+                        break;
+                    }
+                    writeInstruction(0x6000 + x + variableMap.at(str));
+                    return;
+                } else if (match(TOKEN_V_REGISTER)) {
+                    uint16_t y = extractYReg(previous);
+                    writeInstruction(0x8000 + x + y);
+                    return;
                 } else {
                     error(advance(), "Expected V register or byte literal.");
-                    goto error;
+                    break;
                 }
             } else if (match(TOKEN_I_REGISTER)) {
-                CONSUME(TOKEN_LITERAL,
-                        "LD expects 12 bit literal after I register.");
-                uint16_t addr = decodeLiteral(previous, 12, 3,
-                                              "LD expects 12 bit literal.");
+                CONSUME(TOKEN_COMMA, "Expected ',' between arguments.");
+                uint16_t addr = 0;
+                if (match(TOKEN_LITERAL)) {
+                    addr = decodeLiteral(previous, 12, 3,
+                                         "LD expects 12 bit literal.");
+
+                } else if (match(TOKEN_IDENTIFIER)) {
+                    std::string str(previous->start, previous->length);
+                    if ((variableMap.find(str) == variableMap.end())) {
+                        error(previous, "Variable '%.*s' does not exist.",
+                              previous->length, previous->start);
+                        break;
+                    } else if (variableMap.at(str) > 4095) {
+                        error(previous,
+                              "Value %d in variable '%.*s' is too large "
+                              "(expected 12 bit).",
+                              variableMap.at(str), previous->length,
+                              previous->start);
+                        break;
+                    }
+                    addr = variableMap.at(str);
+                }
                 writeInstruction(0xA000 + addr);
+                return;
             } else {
-                error(peek(),
+                error(advance(),
                       "LD expects either V or I register as first argument.");
-                goto error;
+                break;
             }
         } break;
         case TOKEN_INST_ADD: {
             if (match(TOKEN_V_REGISTER)) {
-                uint16_t x = extractXReg(advance());
+                uint16_t x = extractXReg(previous);
                 CONSUME(TOKEN_COMMA, "Expected ',' between arguments.");
                 if (match(TOKEN_V_REGISTER)) {
-                    uint16_t y = extractYReg(advance());
+                    uint16_t y = extractYReg(previous);
                     writeInstruction(0x8004 + x + y);
+                    return;
                 } else if (match(TOKEN_LITERAL)) {
-                    uint16_t byte = decodeLiteral(advance(), 8, 2,
-                                                  "Expected byte literal.");
+                    uint16_t byte =
+                        decodeLiteral(previous, 8, 2, "Expected byte literal.");
                     writeInstruction(0x7000 + x + byte);
+                    return;
                 } else {
                     error(advance(), "Expected V register or byte literal.");
-                    goto error;
+                    break;
                 }
             } else if (match(TOKEN_I_REGISTER)) {
                 CONSUME(TOKEN_COMMA, "Expected ',' between arguments.");
@@ -315,6 +403,7 @@ void Compiler::instructionStmt() {
                         "ADD expects V register after I register argument.");
                 uint16_t x = extractXReg(previous);
                 writeInstruction(0xF01E + x);
+                return;
             }
         } break;
         case TOKEN_INST_OR: {
@@ -336,16 +425,34 @@ void Compiler::instructionStmt() {
             DOUBLE_REG_INST(SUBN, 0x8007);
         } break;
         case TOKEN_INST_SHL: {
-            SINGLE_REG_INST(SHL, 0x8008);
+            SINGLE_REG_INST(SHL, 0x800E);
         } break;
         case TOKEN_INST_RND: {
             CONSUME(TOKEN_V_REGISTER,
                     "RND expects V register as first argument.");
             uint16_t x = extractXReg(previous);
             CONSUME(TOKEN_COMMA, "Expected ',' between arguments.");
-            CONSUME(TOKEN_LITERAL, "RND expects byte as second argument.");
-            uint16_t byte = decodeLiteral(previous, 8, 2, "RND expects byte.");
+            uint16_t byte = 0;
+            if (match(TOKEN_LITERAL)) {
+                byte = decodeLiteral(previous, 8, 2, "RND expects byte.");
+            } else if (match(TOKEN_IDENTIFIER)) {
+                std::string str(previous->start, previous->length);
+                if ((variableMap.find(str) == variableMap.end())) {
+                    error(previous, "Variable '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
+                } else if (variableMap.at(str) > 4095) {
+                    error(previous,
+                          "Value %d in variable '%.*s' is too large "
+                          "(expected byte).",
+                          variableMap.at(str), previous->length,
+                          previous->start);
+                    break;
+                }
+                byte = variableMap.at(str);
+            }
             writeInstruction(0xC000 + x + byte);
+            return;
         } break;
         case TOKEN_INST_DRW: {
             CONSUME(TOKEN_V_REGISTER,
@@ -356,11 +463,32 @@ void Compiler::instructionStmt() {
                     "DRW expects V register as second argument.");
             uint16_t y = extractYReg(previous);
             CONSUME(TOKEN_COMMA, "Expect ',' between arguments.");
-            CONSUME(TOKEN_LITERAL,
-                    "DRW expects nibble literal as third argument.");
-            uint16_t nibble =
-                decodeLiteral(previous, 4, 1, "Expected 4 bit literal.");
+            uint16_t nibble = 0;
+            if (match(TOKEN_LITERAL)) {
+                nibble = decodeLiteral(previous, 4, 1,
+                                       "'DRW' expected 4 bit literal.");
+            } else if (match(TOKEN_IDENTIFIER)) {
+                std::string identifier(previous->start, previous->length);
+                if (variableMap.find(identifier) == variableMap.end()) {
+                    error(previous, "Variable '%.*s' does not exist.",
+                          previous->length, previous->start);
+                    break;
+                } else if (variableMap.at(identifier) > 15) {
+                    error(previous,
+                          "'DRW' expects nibble, value in variable '%.*s' is "
+                          "too large.",
+                          previous->length, previous->start);
+                    break;
+                } else {
+                    nibble = variableMap.at(identifier);
+                }
+            } else {
+                error(advance(), "'DRW' expects 4 bit variable or literal as "
+                                 "third argument.");
+                break;
+            }
             writeInstruction(0xD000 + x + y + nibble);
+            return;
         } break;
         case TOKEN_INST_SKP: {
             SINGLE_REG_INST(SKP, 0xE09E);
@@ -393,27 +521,25 @@ void Compiler::instructionStmt() {
             SINGLE_REG_INST(LDV, 0xF065);
         } break;
         default: {
-            errorAtPrevious("Unexpected token while parsing instruction.");
-            goto error;
+            error(previous, "Unexpected token while parsing instruction.");
         } break;
     }
 
+    // this code block SHOULD only be accesible if an error occured
+    // in all other cases we should return from the function within the switch
+    // statement
+    if (panicMode) {
+        // hadError = true;
+        synchronize();
+    }
     return;
-
-error:
-    hadError = true;
-    synchronize();
-    return;
-#undef EXTRACT_X_REG
-#undef EXTRACT_Y_REG
 #undef CONSUME
 #undef DOUBLE_REG_INST
 }
 
-void Compiler::assignStmt() {
-    std::string variable(previous->start, previous->length);
-    advance();
-    if (consume(TOKEN_LITERAL, "Can only assign literals to variable.")) {
+void Compiler::assignStmt(Token *identifier) {
+    std::string variable(identifier->start, identifier->length);
+    if (consume(TOKEN_LITERAL, "Can only assign literals to variable")) {
         uint16_t val = 0;
         if (*previous->start == '%') {
             val = decodeBinaryLiteral(previous);
@@ -432,24 +558,21 @@ void Compiler::synchronize() {
 
 void Compiler::statement() {
     if (match(TOKEN_IDENTIFIER)) {
-        advance();
+        Token *identifier = previous;
         if (match(TOKEN_EQUAL)) {
-            assignStmt();
+            assignStmt(identifier);
         } else if (match(TOKEN_COLON)) {
             // labelStmt();
-            advance();
         } else {
-            // error
-            error(peek(), "Expected either '=' or ':' for identifier token.");
+            error(peek(), "Expected either '=' or ':' for identifier '%.*s'.",
+                  identifier->length, identifier->start);
             synchronize();
         }
     } else if (matchBetween(TOKEN_INST_CLS, TOKEN_INST_LDV)) {
         instructionStmt();
     } else if (match(TOKEN_NEWLINE)) {
         panicMode = false;
-        advance();
     } else {
-        // error: expected label or assignment
         error(peek(), "Line has to start with identifier or instruction.");
         synchronize();
     }
@@ -460,32 +583,26 @@ void Compiler::statement() {
 void Compiler::labelPass() {
     while (!isAtEnd()) {
         if (match(TOKEN_IDENTIFIER)) {
-            advance();
-            if (match(TOKEN_COLON)) {
-                std::string str;
-                for (int i = 0; i < previous->length; i++) {
-                    str.assign(previous->start + i);
-                }
+            if (check(TOKEN_COLON)) {
+                std::string str(previous->start, previous->length);
                 labelMap[str] = currentAddress;
-            }
-            while (!match(TOKEN_NEWLINE))
                 advance();
+            }
         } else if (matchBetween(TOKEN_INST_CLS, TOKEN_INST_LDV)) {
             currentAddress += 2;
-            while (!match(TOKEN_NEWLINE))
-                advance();
         }
-        advance();
+        synchronize();
     }
     currentToken = 0;
     currentAddress = 512;
     previous = nullptr;
 }
 
-void Compiler::compile() {
+int Compiler::compile() {
     labelPass();
     while (!isAtEnd()) {
         statement();
     }
-    buffer[currentBufferPos] = '\0';
+    buffer[currentBufferPos] = EOF;
+    return currentBufferPos;
 }

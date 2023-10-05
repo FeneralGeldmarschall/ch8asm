@@ -1,6 +1,7 @@
 #include <cstring>
 #include <stdio.h>
 
+#include "common.h"
 #include "scanner.h"
 #include "token.h"
 
@@ -32,6 +33,8 @@ char Scanner::advance() {
 
 char Scanner::peek() { return this->current[0]; }
 
+char Scanner::peekNext() { return this->current[1]; }
+
 bool Scanner::isAtEnd() { return this->current[0] == '\0'; }
 
 Token Scanner::newToken(TokenType type) {
@@ -43,37 +46,6 @@ Token Scanner::newToken(TokenType type) {
     return token;
 }
 
-bool isHex(char c) {
-    return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') ||
-           ('A' <= c && c <= 'F');
-}
-
-bool isBinary(char c) { return ('0' == c || '1' == c); }
-
-bool isDigit(char c) { return ('0' <= c && c <= '9'); }
-
-bool isAlpha(char c) {
-    return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
-}
-
-bool isAlphaNumeric(char c) { return isAlpha(c) || isDigit(c); }
-
-Token Scanner::hexLiteral() {
-    this->start = current; // we yeet the leading '$'
-    while (isHex(peek())) {
-        advance();
-    }
-    return newToken(TOKEN_LITERAL);
-}
-
-Token Scanner::binaryLiteral() {
-    this->start = current; // we yeet the leading '%'
-    while (isBinary(peek())) {
-        advance();
-    }
-    return newToken(TOKEN_LITERAL);
-}
-
 Token Scanner::literal() {
     if (*this->start == '%') {
         while (isBinary(peek()))
@@ -83,7 +55,6 @@ Token Scanner::literal() {
             advance();
     }
 
-    // if (isAlpha(peek()))
     return newToken(TOKEN_LITERAL);
 }
 
@@ -102,8 +73,10 @@ void Scanner::skipWhitespace() {
 void Scanner::comment() {
     while (!isAtEnd()) {
         char c = advance();
-        if (c == '\n')
+        if (c == '\n') {
+            line++;
             return;
+        }
     }
 }
 
@@ -119,7 +92,6 @@ TokenType Scanner::checkInstruction(int start, int length, const char *rest,
 
 TokenType Scanner::identifierOrInstruction() {
     int tokenLength = this->current - this->start;
-    // printf("Tokenlength %d\n", tokenLength);
     if (tokenLength > 4)
         return TOKEN_IDENTIFIER;
 
@@ -134,13 +106,16 @@ TokenType Scanner::identifierOrInstruction() {
                 } break;
             }
         } break;
+        case 'B': {
+            return checkInstruction(1, 2, "CD", TOKEN_INST_BCD);
+        } break;
         case 'C': {
             switch (this->start[1]) {
                 case 'L': {
                     return checkInstruction(2, 1, "S", TOKEN_INST_CLS);
                 } break;
                 case 'A': {
-                    return checkInstruction(2, 3, "LL", TOKEN_INST_CALL);
+                    return checkInstruction(2, 2, "LL", TOKEN_INST_CALL);
                 } break;
             }
         } break;
@@ -154,7 +129,11 @@ TokenType Scanner::identifierOrInstruction() {
             return checkInstruction(1, 2, "DT", TOKEN_INST_GDT);
         } break;
         case 'J': {
-            return checkInstruction(1, 1, "P", TOKEN_INST_JP);
+            if (tokenLength == 2) {
+                return checkInstruction(1, 1, "P", TOKEN_INST_JP);
+            } else {
+                return checkInstruction(1, 2, "PO", TOKEN_INST_JPO);
+            }
         } break;
         case 'L': {
             if (tokenLength == 2) {
@@ -167,7 +146,14 @@ TokenType Scanner::identifierOrInstruction() {
             return checkInstruction(1, 1, "R", TOKEN_INST_OR);
         } break;
         case 'R': {
-            return checkInstruction(1, 2, "ET", TOKEN_INST_RET);
+            switch (this->start[1]) {
+                case 'E': {
+                    return checkInstruction(2, 1, "T", TOKEN_INST_RET);
+                } break;
+                case 'N': {
+                    return checkInstruction(2, 1, "D", TOKEN_INST_RND);
+                }
+            }
         } break;
         case 'S': {
             switch (this->start[1]) {
@@ -180,7 +166,7 @@ TokenType Scanner::identifierOrInstruction() {
                 } break;
                 case 'K': {
                     if (tokenLength == 3) {
-                        return checkInstruction(2, 2, "P", TOKEN_INST_SKP);
+                        return checkInstruction(2, 1, "P", TOKEN_INST_SKP);
                     } else {
                         return checkInstruction(2, 2, "NP", TOKEN_INST_SKNP);
                     }
@@ -201,13 +187,13 @@ TokenType Scanner::identifierOrInstruction() {
                     return checkInstruction(0, 2, "SE", TOKEN_INST_SE);
                 } break;
                 case 'N': {
-                    return checkInstruction(2, 1, "E", TOKEN_INST_SKNP);
+                    return checkInstruction(2, 1, "E", TOKEN_INST_SNE);
                 } break;
                 case 'D': {
-                    return checkInstruction(2, 1, "D", TOKEN_INST_SDT);
+                    return checkInstruction(2, 1, "T", TOKEN_INST_SDT);
                 } break;
                 case 'S': {
-                    return checkInstruction(2, 1, "T", TOKEN_INST_SDT);
+                    return checkInstruction(2, 1, "T", TOKEN_INST_SST);
                 } break;
                 case 'T': {
                     return checkInstruction(2, 1, "V", TOKEN_INST_STV);
@@ -230,14 +216,13 @@ Token Scanner::identifier(char c) {
     if (c == 'I' && !isAlphaNumeric(peek())) {
         return newToken(TOKEN_I_REGISTER);
     }
-    if ((c == 'v' || c == 'V') && isHex(peek())) {
+    if ((c == 'v' || c == 'V') && isHex(peek()) && !isAlpha(peekNext())) {
         advance();
         return newToken(TOKEN_V_REGISTER);
     }
 
     // Handle the rest
     while (isAlpha(peek())) {
-        // printf("Advancing in loop\n");
         advance();
     }
     return newToken(identifierOrInstruction());
@@ -251,7 +236,6 @@ void Scanner::scan(std::vector<Token> *vector) {
         char c = advance();
 
         if (isAlpha(c)) {
-            // printf("%c is alpha\n", c);
             vector->push_back(identifier(c));
             continue;
         }
@@ -285,12 +269,6 @@ void Scanner::scan(std::vector<Token> *vector) {
             } break;
             default: {
                 error(this->line, c, "Unexpected character.");
-                // if (!panicMode) {
-                //     fprintf(stderr, "[line %d] Unexpected character '%c'",
-                //             this->line, c);
-                //     this->panicMode = true;
-                // }
-                // this->hadError = true;
             } break;
         }
     }
