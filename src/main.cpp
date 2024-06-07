@@ -6,8 +6,8 @@
 #include "token.h"
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: ch8asm [path]\n");
+    if (argc < 2 || argc > 3) {
+        fprintf(stderr, "Usage: ch8asm [file to assemble] (outfile)\n");
         exit(64);
     }
 
@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
     }
 
     char compileBuffer[4096 - 512 + 1];
-    Compiler compiler(&tokens, "out.bin", compileBuffer, 4096 - 512 + 1);
+    Compiler compiler(&tokens, compileBuffer, 4096 - 512 + 1);
     int blen = compiler.compile();
 
     if (compiler.hadError) {
@@ -52,13 +52,16 @@ int main(int argc, char *argv[]) {
         exit(65);
     }
 
-    FILE *outFile = fopen("out.ch8", "wb");
+    const char *outfile = "out.bin";
+    if (argc == 3) {
+        outfile = argv[2];
+    }
+
+    FILE *outFile = fopen(outfile, "wb");
     int pos = 0;
     blen++;
     while (compileBuffer[pos] != EOF) {
-        // for (int pos = 0; pos < blen; pos++) {
         fwrite(compileBuffer + pos, 1, 1, outFile);
-        // printf("%2X", compileBuffer[pos]);
         pos++;
     }
 
