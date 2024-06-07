@@ -16,7 +16,7 @@ echo -e "${BOLD}TEST RUN:${NC}"
 for i in $cases; do
   echo -e "\tTesting instruction ${i}..."
   eval "./$exec" "test/asm/${i}.asm" "2>&1" "|" "sed 's/^/\t/'"
-  if [ ! -e out.ch8 ] || [ $(diff -q "test/bin/${i}.bin" out.ch8) ]; then
+  if [ ! -e out.bin ] || [ $(diff -q "test/bin/${i}.bin" out.bin) ]; then
     echo -e "\t${RED}TEST FAILED${NC}"
   else
     echo -e "\t${GREEN}TEST PASSED${NC}"
