@@ -10,18 +10,11 @@
 #include "compiler.h"
 #include "token.h"
 
-Compiler::Compiler(std::vector<Token> *tokens, const char *outfile,
-                   char *buffer, int bufferLength) {
+Compiler::Compiler(std::vector<Token> *tokens, char *buffer, int bufferLength) {
     this->tokens = tokens;
     this->currentToken = 0;
     this->currentAddress = 512;
     this->previous = nullptr;
-    // this->outfile = fopen(outfile, "wb");
-    // if (this->outfile == NULL) {
-    //     fprintf(stderr, "Could not open file %s", outfile);
-    //     exit(74);
-    // }
-    this->outfile = NULL;
     this->buffer = buffer;
     this->bufferLength = bufferLength;
     this->currentBufferPos = 0;
@@ -68,11 +61,6 @@ bool Compiler::matchBetween(TokenType start, TokenType end) {
 }
 
 void Compiler::writeInstruction(uint16_t instruction) {
-    // int ret = fwrite(&instruction, sizeof(uint16_t), 1, outfile);
-    // if (ret < 1) {
-    //     fprintf(stderr, "Could not write instructions to file.");
-    //     exit(74);
-    // }
     if (currentBufferPos + 1 > (bufferLength - 2)) {
         fprintf(stderr, "Assembly file is too large.\n");
         exit(65);
@@ -546,6 +534,7 @@ void Compiler::instructionStmt() {
     return;
 #undef CONSUME
 #undef DOUBLE_REG_INST
+#undef SINGLE_REG_INST
 }
 
 void Compiler::assignStmt(Token *identifier) {

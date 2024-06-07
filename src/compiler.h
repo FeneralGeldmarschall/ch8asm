@@ -9,8 +9,7 @@
 
 class Compiler {
   public:
-    Compiler(std::vector<Token> *tokens, const char *outfile, char *buffer,
-             int bufferLength);
+    Compiler(std::vector<Token> *tokens, char *buffer, int bufferLength);
     int compile();
     bool hadError;
 
@@ -18,8 +17,6 @@ class Compiler {
     int currentAddress;
     int currentToken;
     Token *previous;
-    // const char *outfile;
-    FILE *outfile;
     char *buffer;
     int currentBufferPos;
     int bufferLength;
@@ -40,7 +37,6 @@ class Compiler {
     uint16_t decodeLiteral(Token *literal, uint8_t binaryLength,
                            uint8_t hexLength, const char *message);
 
-    // Token *previous();
     bool isAtEnd();
     bool check(TokenType type);
     bool checkBetween(TokenType start, TokenType end);

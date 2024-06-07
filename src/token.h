@@ -10,11 +10,7 @@ typedef enum {
     TOKEN_EQUAL,
 
     TOKEN_IDENTIFIER, // Variable, Label
-    // TOKEN_INSTRUCTION,
-    // TOKEN_HEX,
-    // TOKEN_BINARY,
     TOKEN_LITERAL,
-    // TOKEN_REGISTER,
     TOKEN_V_REGISTER,
     TOKEN_I_REGISTER,
 
@@ -46,7 +42,6 @@ typedef enum {
     TOKEN_INST_BCD,
     TOKEN_INST_STV,
     TOKEN_INST_LDV,
-    // INST_UNKNOWN,
 } TokenType;
 
 typedef struct {
@@ -55,11 +50,3 @@ typedef struct {
     int length;
     int line;
 } Token;
-
-// typedef struct {
-// 		char *start; // Start of the current token being scanned
-// 		char *current; // Pointer to character that hasnt been consumed yet
-// 		int line; // Current line being scanned
-// } Scanner;
-
-// Scanner initScanner(Scanner *scanner, const char *source);
