@@ -355,7 +355,6 @@ void Compiler::instructionStmt() {
                 if (match(TOKEN_LITERAL)) {
                     addr = decodeLiteral(previous, 12, 3,
                                          "LD expects 12 bit literal.");
-
                 } else if (match(TOKEN_IDENTIFIER)) {
                     std::string str(previous->start, previous->length);
                     if ((variableMap.find(str) == variableMap.end())) {
@@ -393,8 +392,20 @@ void Compiler::instructionStmt() {
                         decodeLiteral(previous, 8, 2, "Expected byte literal.");
                     writeInstruction(0x7000 + x + byte);
                     return;
+                } else if (match(TOKEN_IDENTIFIER)) {
+                    std::string str(previous->start, previous->length);
+                    if ((variableMap.find(str) == variableMap.end()) ||
+                        variableMap.at(str) > 255) {
+                        error(previous,
+                              "Value in variable is too large for ADD "
+                              "(expected byte).");
+                        break;
+                    }
+                    writeInstruction(0x7000 + x + variableMap.at(str));
+                    return;
                 } else {
-                    error(advance(), "Expected V register or byte literal.");
+                    error(advance(), "Expected V register, byte literal or "
+                                     "byte identifier.");
                     break;
                 }
             } else if (match(TOKEN_I_REGISTER)) {
